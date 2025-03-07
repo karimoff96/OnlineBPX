@@ -142,6 +142,7 @@ def register_commands(bot):
             "/yesterday - Get all of yesterday's calls\n"
             "/week - Get all calls for current week\n"
             "/month - Get all calls for current month\n"
+            "/cancel - Cancel current operation\n"
             "/stats - Get call statistics\n",
             parse_mode="HTML",
         )
