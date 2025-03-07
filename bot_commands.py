@@ -102,8 +102,7 @@ def register_commands(bot):
             "/yesterday - Get all of yesterday's calls\n"
             "/week - Get all calls for current week\n"
             "/month - Get all calls for current month\n"
-            "/stats - Get call statistics\n"
-            "/setup - Setup webhook for real-time notifications\n",
+            "/stats - Get call statistics\n",
             parse_mode='HTML'
         )
 

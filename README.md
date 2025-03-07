@@ -46,8 +46,6 @@ Edit `config.py` to set:
 - `/week` - Get all calls for current week
 - `/month` - Get all calls for current month
 - `/stats` - Get call statistics
-- `/setup` - Set up webhook for real-time notifications
-- `/test` - Test audio file sending
 
 ## Project Structure
 

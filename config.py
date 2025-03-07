@@ -3,8 +3,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 from environs import Env
 
+# Create new Env instance and force reload
 env = Env()
-env.read_env()
+env.read_env(override=True)  # Force reading the .env file and override existing variables
 
 # Configure detailed logging
 LOG_DIRECTORY = "logs"
@@ -30,14 +31,14 @@ TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = env.str("TELEGRAM_CHANNEL_ID")
 
 # Webhook configuration
-WEBHOOK_HOST = env.str("WEBHOOK_HOST")  # Your current ngrok URL
-AUTH_KEY = env.str("AUTH_KEY")
-AUTH_URL = env.str("AUTH_URL")
-HISTORY_URL = env.str("HISTORY_URL")
+WEBHOOK_HOST = env.str("WEBHOOK_HOST").strip("'").split('#')[0].strip()  # Clean up any quotes or comments
 WEBHOOK_LISTEN = '0.0.0.0'
 WEBHOOK_PORT = 5000
 WEBHOOK_URL_BASE = f"https://{WEBHOOK_HOST}"
 WEBHOOK_URL_PATH = f"/webhook/{TELEGRAM_BOT_TOKEN}"
+HISTORY_URL = env.str("HISTORY_URL")
+AUTH_KEY = env.str("AUTH_KEY")
+AUTH_URL = env.str("AUTH_URL")
 
 # API configuration
 
