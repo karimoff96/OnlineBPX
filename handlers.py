@@ -14,7 +14,7 @@ from api import OnlinePBXAPI
 from utils import (
     get_last_check_time, save_last_check_time,
     get_last_call_uuid, save_last_call_uuid,
-    format_call_details, download_and_extract_audio_archive
+    format_call_details, download_and_extract_audio_archive, send_progress_update
 )
 
 
@@ -193,20 +193,15 @@ def process_new_calls(bot):
     return 0
 
 
-def get_period_calls(bot, chat_id, start_time, end_time, period_name):
-    """
-    Get and send calls for a specific period
+def get_period_calls(bot, chat_id, start_time, end_time, period_name, status_msg=None):
+    """Get and send calls for a specific period"""
     
-    Args:
-        bot (telebot.TeleBot): Telegram bot instance
-        chat_id: Chat ID to send status messages to
-        start_time (int): Start timestamp
-        end_time (int): End timestamp
-        period_name (str): Name of the period (e.g., "today", "month")
-        
-    Returns:
-        int: Number of sent calls
-    """
+    if status_msg:
+        send_progress_update(chat_id, status_msg.message_id, f"Fetching {period_name.title()}'s Calls", bot, 0.2)
+    
+    # Show typing action
+    bot.send_chat_action(chat_id, 'typing')
+    
     logger.info(f"Getting {period_name} calls from {datetime.fromtimestamp(start_time)} to {datetime.fromtimestamp(end_time)}")
     
     # Get calls for the period
@@ -215,129 +210,14 @@ def get_period_calls(bot, chat_id, start_time, end_time, period_name):
         bot.send_message(chat_id, f"Failed to authenticate with OnlinePBX API")
         return 0
     
+    if status_msg:
+        send_progress_update(chat_id, status_msg.message_id, f"Retrieving Call Records", bot, 0.4)
+    
+    # Show typing action again
+    bot.send_chat_action(chat_id, 'typing')
+    
     # Get call details
     call_details = api.get_call_details(start_time, end_time)
-    
-    if not call_details or len(call_details) == 0:
-        bot.send_message(chat_id, f"No calls found for {period_name}")
-        return 0
-    
-    bot.send_message(chat_id, f"Found {len(call_details)} calls for {period_name}. Sending to channel...")
-    
-    # Download recordings once
-    download_url = api.download_call_records(start_time, end_time)
-    temp_dir = None
-    audio_files = {}
-    
-    if download_url:
-        temp_dir, audio_files = download_and_extract_audio_archive(download_url)
-    
-    # Process and send each call
-    sent_count = 0
-    for call in sorted(call_details, key=lambda x: x.get('start_stamp', 0)):
-        try:
-            # Format message
-            message_text = format_call_details(call)
-            uuid = call.get('uuid', '')
-            
-            logger.debug(f"Processing call UUID: {uuid}")
-            
-            # Find the matching audio file
-            audio_path = None
-            if temp_dir and os.path.exists(temp_dir):
-                for filename, filepath in audio_files.items():
-                    if uuid in filename and os.path.isfile(filepath) and os.path.getsize(filepath) > 0:
-                        audio_path = filepath
-                        logger.debug(f"Found matching audio file: {filepath}")
-                        break
-            
-            # Send with audio if available
-            sent = False
-            if audio_path and os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
-                try:
-                    logger.debug(f"Sending audio file: {audio_path} ({os.path.getsize(audio_path)} bytes)")
-                    with open(audio_path, 'rb') as audio:
-                        bot.send_audio(
-                            TELEGRAM_CHANNEL_ID,
-                            audio,
-                            caption=message_text,
-                            parse_mode='HTML'
-                        )
-                    logger.info(f"Successfully sent audio for call UUID: {uuid}")
-                    sent = True
-                except Exception as audio_error:
-                    logger.error(f"Error sending audio: {audio_error}", exc_info=True)
-            
-            # If audio sending failed or no audio was found, send text message only
-            if not sent:
-                logger.debug(f"Sending text-only message for call UUID: {uuid}")
-                bot.send_message(
-                    TELEGRAM_CHANNEL_ID,
-                    message_text + "\n\n⚠️ <i>Recording couldn't be sent</i>",
-                    parse_mode='HTML'
-                )
-                logger.info(f"Sent text-only notification for UUID: {uuid}")
-            
-            sent_count += 1
-            
-            # Add delay to avoid rate limiting
-            time.sleep(1)
-            
-        except telebot.apihelper.ApiTelegramException as e:
-            if "retry after" in str(e).lower():
-                retry_time = int(str(e).split("retry after ")[1])
-                logger.info(f"Rate limited. Waiting for {retry_time} seconds")
-                time.sleep(retry_time + 1)
-                # Try again with text-only message
-                try:
-                    bot.send_message(
-                        TELEGRAM_CHANNEL_ID,
-                        message_text + "\n\n⚠️ <i>Recording couldn't be sent (rate limited)</i>",
-                        parse_mode='HTML'
-                    )
-                    sent_count += 1
-                    logger.info(f"Sent text-only notification after rate limit for UUID: {uuid}")
-                except Exception as retry_error:
-                    logger.error(f"Error after retry: {retry_error}", exc_info=True)
-            else:
-                logger.error(f"Telegram API error: {e}", exc_info=True)
-                # Try to send text-only message as fallback
-                try:
-                    bot.send_message(
-                        TELEGRAM_CHANNEL_ID,
-                        message_text + "\n\n⚠️ <i>Recording couldn't be sent (API error)</i>",
-                        parse_mode='HTML'
-                    )
-                    logger.info(f"Sent fallback text-only notification for UUID: {uuid}")
-                    sent_count += 1
-                except Exception:
-                    logger.error(f"Failed to send fallback message", exc_info=True)
-        except Exception as e:
-            logger.error(f"Error processing call {uuid}: {e}", exc_info=True)
-            # Try to send text-only message as fallback
-            try:
-                bot.send_message(
-                    TELEGRAM_CHANNEL_ID,
-                    message_text + "\n\n⚠️ <i>Recording couldn't be sent (processing error)</i>",
-                    parse_mode='HTML'
-                )
-                logger.info(f"Sent fallback text-only notification for UUID: {uuid}")
-                sent_count += 1
-            except Exception:
-                logger.error(f"Failed to send fallback message", exc_info=True)
-    
-    # Clean up
-    if temp_dir and os.path.exists(temp_dir):
-        try:
-            shutil.rmtree(temp_dir)
-            logger.debug(f"Cleaned up temp directory: {temp_dir}")
-        except Exception as e:
-            logger.error(f"Error cleaning up temp directory: {e}", exc_info=True)
-    
-    # Send completion message
-    bot.send_message(chat_id, f"Sent {sent_count} calls to the channel")
-    return sent_count
-
 
 def create_test_audio_file():
     """
